@@ -1,7 +1,7 @@
 {
     "name": "Pong",
     "short_name": "Pong",
-    "start_url": "index.html",
+    "start_url": "https://kubikas3.github.io/pong.github.io/",
     "display": "fullscreen",
     "orientation": "portrait",
     "background_color": "#0000FF",
