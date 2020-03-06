@@ -1,7 +1,7 @@
 {
     "name": "Pong",
     "short_name": "Pong",
-    "start_url": "/index.html",
+    "start_url": "index.html",
     "display": "fullscreen",
     "orientation": "portrait",
     "background_color": "#0000FF",
