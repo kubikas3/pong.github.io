@@ -4,8 +4,8 @@
     "start_url": "https://kubikas3.github.io/pong.github.io/",
     "display": "fullscreen",
     "orientation": "portrait",
-    "background_color": "#0000FF",
-    "theme_color": "#0000FF",
+    "background_color": "#000000",
+    "theme_color": "#000000",
     "icons": [
         {
           "src": "images/icons/icon-72x72.png",
