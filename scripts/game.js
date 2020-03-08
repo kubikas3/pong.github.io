@@ -1,16 +1,18 @@
 var canvas,
     ctx,
+    uptime,
     deltaTime = 0,
     gameTime = 0,
     timeScale = 1,
     frameRate = 0,
     fpsLimit = 60,
     info,
-    scale;
+    scale,
+    ws,
+    uuid;
 
-var paddle0 = new Paddle(new Vector2(114, 506), new Vector2(28, 3)),
-    paddle1 = new Paddle(new Vector2(114, 6), new Vector2(28, 3)),
-    ball = new Ball(new Vector2(126, 254), 4);
+var players,
+    ball;
 
 onresize = setupCanvas;
 
@@ -21,36 +23,93 @@ onload = function(e)
     canvas.style.transform = "scale(" + (1 / devicePixelRatio) + ")";
     setupCanvas();
     document.body.insertBefore(canvas, document.body.children[0]);
-    var upTime = performance.now();
-    
-    (function loop()
+    upTime = performance.now();
+    ws = new WebSocket("ws://192.168.1.173:8000");
+    ws.onmessage = function(ev)
     {
-        //var nextFrameTime = upTime + 1000 / fpsLimit;
+        var msg = JSON.parse(ev.data);
         
-        // while (performance.now() < nextFrameTime)
-        //     continue;
+        switch (msg.type)
+        {
+            case 'uuid':
+                uuid = msg.data;
+                break;
+
+            case 'objects':
+                deltaTime = (performance.now() - upTime) / 1000;
+                upTime = performance.now();
+                gameTime += deltaTime;
+                frameRate = 1 / deltaTime;
+                players = msg.data.players;
+                ball = msg.data.ball;
+                draw();
+                break;
+        }
+        //console.log(msg);
+    }
+    ws.onopen = function(ev)
+    {
+        console.log(ws.readyState);
+    }
+
+    // upTime = performance.now();
+    
+    // (function loop()
+    // {
+    //     //var nextFrameTime = upTime + 1000 / fpsLimit;
         
-        deltaTime = (performance.now() - upTime) / 1000;
-        upTime = performance.now();
-        gameTime += deltaTime;
-        frameRate = 1 / deltaTime;
-        Input._newState = 
-        {
-            keys: Array.from(Input._keys),
-            touches: Array.from(Input._touches)
-        };
-        update();
-        physics();
-        lateUpdate();
-        draw();
-        Input._oldState =
-        {
-            keys: Array.from(Input._newState.keys),
-            touches: Array.from(Input._newState.touches)
-        };
-        info.innerHTML = "FPS: " + (1 / deltaTime).toFixed(1);
-        requestAnimationFrame(loop);
-    })();
+    //     // while (performance.now() < nextFrameTime)
+    //     //     continue;
+        
+    //     deltaTime = (performance.now() - upTime) / 1000;
+    //     upTime = performance.now();
+    //     gameTime += deltaTime;
+    //     frameRate = 1 / deltaTime;
+    //     // Input._newState = 
+    //     // {
+    //     //     keys: Array.from(Input._keys),
+    //     //     touches: Array.from(Input._touches)
+    //     // };
+    //     update();
+    //     //physics();
+    //     //lateUpdate();
+    //     draw();
+    //     // Input._oldState =
+    //     // {
+    //     //     keys: Array.from(Input._newState.keys),
+    //     //     touches: Array.from(Input._newState.touches)
+    //     // };
+    //     info.innerHTML = "FPS: " + (1 / deltaTime).toFixed(1);
+    //     requestAnimationFrame(loop);
+    // })();
+}
+
+ontouchstart = function(e)
+{
+    
+}
+
+ontouchend = function(e)
+{
+    // var doc = window.document;
+    // var docEl = doc.documentElement;
+    // var requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
+    
+    // if(requestFullScreen && !doc.fullscreenElement && !doc.mozFullScreenElement && !doc.webkitFullscreenElement && !doc.msFullscreenElement)
+    // {
+    //     requestFullScreen.call(docEl);
+    //     // screen.orientation.lock("portrait");
+    // }
+}
+
+ontouchcancel = function(e)
+{
+
+}
+
+ontouchmove = function(e)
+{
+    ws.send(JSON.stringify((e.touches[0].clientX - canvas.offsetLeft) * this.devicePixelRatio / scale));
 }
 
 function setupCanvas()
@@ -73,18 +132,18 @@ function setupCanvas()
 
 function update()
 {
-    if (Input.touchCount == 1)
-    {
-        if (ball.velocity.x == 0 && ball.velocity.y == 0)
-        {
-            ball.velocity = new Vector2(Math.random() * 200, Math.random() * 200);
-        }
+    // if (Input.touchCount == 1)
+    // {
+    //     if (ball.velocity.x == 0 && ball.velocity.y == 0)
+    //     {
+    //         ball.velocity = new Vector2(Math.random() * 200, Math.random() * 200);
+    //     }
 
-        var touch = Input.getTouch(0);
-        paddle0.position.x = touch.position.x / scale - paddle0.size.x / 2;
-    }
+    //     var touch = Input.getTouch(0);
+    //     paddle0.position.x = touch.position.x / scale - paddle0.size.x / 2;
+    // }
 
-    paddle1.position.x = Vector2.lerp(paddle1.position, new Vector2(ball.position.x + ball.radius / 2 - paddle1.size.x / 2, 0), 0.1).x;
+    // paddle1.position.x = Vector2.lerp(paddle1.position, new Vector2(ball.position.x + ball.radius / 2 - paddle1.size.x / 2, 0), 0.1).x;
 }
 
 function lateUpdate()
@@ -140,38 +199,7 @@ function lateUpdate()
 
 function physics()
 {
-    ball.position.x += ball.velocity.x / fpsLimit * timeScale;
-    ball.position.y += ball.velocity.y / fpsLimit * timeScale;
-
-    if (ball.position.x < 0)
-    {
-        ball.velocity.x *= -1;
-        ball.position.x = 0;
-    }
-
-    if (ball.position.x + ball.radius > 256)
-    {
-        ball.velocity.x *= -1;
-        ball.position.x = 256 - ball.radius;
-    }
-
-    if (ball.position.x + ball.radius > paddle0.position.x &&
-        ball.position.x < paddle0.position.x + paddle0.size.x &&
-        ball.position.y + ball.radius > paddle0.position.y &&
-        ball.position.y < paddle0.position.y + paddle0.size.y)
-        {
-            ball.position.y = paddle0.position.y - ball.radius;
-            ball.velocity.y *= -1.1;
-        }
-
-    if (ball.position.x + ball.radius > paddle1.position.x &&
-        ball.position.x < paddle1.position.x + paddle1.size.x &&
-        ball.position.y + ball.radius > paddle1.position.y &&
-        ball.position.y < paddle1.position.y + paddle1.size.y)
-        {
-            ball.position.y = paddle1.position.y + paddle0.size.y + ball.radius;
-            ball.velocity.y *= -1.1;
-        }
+    
 }
 
 function draw()
@@ -182,7 +210,16 @@ function draw()
     ctx.restore();
     
     ctx.save();
-    ctx.scale(scale, scale);
+
+    if (uuid == 'player1')
+    {
+        ctx.scale(scale, -scale);
+        ctx.translate(0, -512);
+    }
+    else
+    {
+        ctx.scale(scale, scale);
+    }
     
     ctx.beginPath();
     ctx.moveTo(0, 256);
@@ -191,9 +228,18 @@ function draw()
     ctx.setLineDash([8.25, 8.25]);
     ctx.stroke();
 
-    ctx.fillRect(paddle0.position.x, paddle0.position.y, paddle0.size.x, paddle0.size.y);
-    ctx.fillRect(paddle1.position.x, paddle1.position.y, paddle1.size.x, paddle1.size.y);
-    ctx.fillRect(ball.position.x, ball.position.y, ball.radius, ball.radius);
+    if (players)
+    {
+        for (var i = 0; i < players.length; i++)
+        {
+            ctx.fillRect(players[i].position.x, players[i].position.y, players[i].size.x, players[i].size.y);
+        }
+    }
+
+    if (ball)
+    {
+        ctx.fillRect(ball.position.x, ball.position.y, ball.radius, ball.radius);
+    }
 
     ctx.restore();
 }
