@@ -24,7 +24,7 @@ onload = function(e)
     setupCanvas();
     document.body.insertBefore(canvas, document.body.children[0]);
     upTime = performance.now();
-    ws = new WebSocket("ws://192.168.1.173:8000");
+    ws = new WebSocket("ws://78.61.204.80:8000");
     ws.onmessage = function(ev)
     {
         var msg = JSON.parse(ev.data);
