@@ -1,6 +1,5 @@
 var canvas,
     ctx,
-    uptime,
     deltaTime = 0,
     gameTime = 0,
     timeScale = 1,
@@ -9,12 +8,19 @@ var canvas,
     info,
     scale,
     ws,
-    uuid;
+    uuid,
+    pingSent = 0,
+    pingSum = 0,
+    pingCount = 0,
+    ping = 0,
+    roomIsFull = false;
 
 var players,
-    ball;
+    ball,
+    ballTrace = [];
 
 onresize = setupCanvas;
+onorientationchange = setupCanvas;
 
 onload = function(e)
 {
@@ -23,8 +29,7 @@ onload = function(e)
     canvas.style.transform = "scale(" + (1 / devicePixelRatio) + ")";
     setupCanvas();
     document.body.insertBefore(canvas, document.body.children[0]);
-    upTime = performance.now();
-    ws = new WebSocket("ws://78.61.204.80:8000");
+    ws = new WebSocket("wss://78.61.204.80:8081");
     ws.onmessage = function(ev)
     {
         var msg = JSON.parse(ev.data);
@@ -36,91 +41,91 @@ onload = function(e)
                 break;
 
             case 'objects':
-                deltaTime = (performance.now() - upTime) / 1000;
-                upTime = performance.now();
-                gameTime += deltaTime;
-                frameRate = 1 / deltaTime;
-                players = msg.data.players;
-                ball = msg.data.ball;
-                draw();
+                if (players)
+                {
+                    for (var i = 0; i < players.length; i++)
+                    {
+                        players[i].newpos = msg.data.players[i].position;
+                        players[i].score = msg.data.players[i].score;
+                        players[i].size = msg.data.players[i].size;
+                        players[i].online = msg.data.players[i].online;
+                    }
+                }
+                else
+                {
+                    players = msg.data.players;
+                }
+                if (ball)
+                {
+                    ball.newpos = msg.data.ball.position;
+                    ball.radius = msg.data.ball.radius;
+                }
+                else
+                {
+                    ball = msg.data.ball;
+                }
+
+                break;
+            case 'message':
+                if (msg.data == 'room is full')
+                {
+                    roomIsFull = true;
+                }
+                break;
+            case 'pong':
+                if (pingCount > 100)
+                {
+                    pingCount = 0;
+                    pingSum = 0;
+                }
+
+                pingSum += performance.now() - pingSent;
+                pingCount++;
+                ping = pingSum / pingCount;
+                
+                pingSent = performance.now();
+                ws.send(JSON.stringify({type: "ping", data: ""}));
                 break;
         }
-        //console.log(msg);
     }
     ws.onopen = function(ev)
     {
-        console.log(ws.readyState);
+        pingSent = performance.now();
+        ws.send(JSON.stringify({type: "ping", data: ""}));
     }
 
-    // upTime = performance.now();
+    upTime = performance.now();
     
-    // (function loop()
-    // {
-    //     //var nextFrameTime = upTime + 1000 / fpsLimit;
-        
-    //     // while (performance.now() < nextFrameTime)
-    //     //     continue;
-        
-    //     deltaTime = (performance.now() - upTime) / 1000;
-    //     upTime = performance.now();
-    //     gameTime += deltaTime;
-    //     frameRate = 1 / deltaTime;
-    //     // Input._newState = 
-    //     // {
-    //     //     keys: Array.from(Input._keys),
-    //     //     touches: Array.from(Input._touches)
-    //     // };
-    //     update();
-    //     //physics();
-    //     //lateUpdate();
-    //     draw();
-    //     // Input._oldState =
-    //     // {
-    //     //     keys: Array.from(Input._newState.keys),
-    //     //     touches: Array.from(Input._newState.touches)
-    //     // };
-    //     info.innerHTML = "FPS: " + (1 / deltaTime).toFixed(1);
-    //     requestAnimationFrame(loop);
-    // })();
-}
-
-ontouchstart = function(e)
-{
-    
-}
-
-ontouchend = function(e)
-{
-    // var doc = window.document;
-    // var docEl = doc.documentElement;
-    // var requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
-    
-    // if(requestFullScreen && !doc.fullscreenElement && !doc.mozFullScreenElement && !doc.webkitFullscreenElement && !doc.msFullscreenElement)
-    // {
-    //     requestFullScreen.call(docEl);
-    //     // screen.orientation.lock("portrait");
-    // }
-}
-
-ontouchcancel = function(e)
-{
-
-}
-
-ontouchmove = function(e)
-{
-    ws.send(JSON.stringify((e.touches[0].clientX - canvas.offsetLeft) * this.devicePixelRatio / scale));
+    (function loop()
+    {
+        deltaTime = (performance.now() - upTime) / 1000;
+        upTime = performance.now();
+        gameTime += deltaTime;
+        frameRate = 1 / deltaTime;
+        update();
+        draw();
+        info.innerHTML = "FPS: " + (1 / deltaTime).toFixed(1) + "\nPing: " + Math.round(ping) + " ms";//;
+        requestAnimationFrame(loop);
+    })();
 }
 
 function setupCanvas()
 {
-    //canvas.width = innerWidth * devicePixelRatio;
-    canvas.height = innerHeight * devicePixelRatio;
-    canvas.width = canvas.height / 2;
+    if (innerHeight / innerWidth > 2)
+    {
+        canvas.width = innerWidth * devicePixelRatio;
+        canvas.height = canvas.width * 2;
+    }
+    else
+    {
+        canvas.height = innerHeight * devicePixelRatio;
+        canvas.width = canvas.height / 2;
+    }
     scale = canvas.width / 256;
+    canvas.style.marginTop = innerHeight - canvas.height / devicePixelRatio + "px";
     canvas.style.marginLeft = innerWidth / 2 - canvas.width / devicePixelRatio / 2 + "px";
     ctx = canvas.getContext("2d");
-    ctx.font = "29px Arial";
+    ctx.font = devicePixelRatio * 40 + "px Arial";
     ctx.fillStyle = "rgb(236, 240, 241)";
     ctx.strokeStyle = "rgb(236, 240, 241)";
     ctx.lineWidth = 2;
@@ -130,76 +135,63 @@ function setupCanvas()
     ctx.imageSmoothingEnabled = true;
 }
 
+ontouchstart = function(e)
+{
+    ws.send(JSON.stringify({ type: 'input', data: (e.touches[0].clientX - canvas.offsetLeft) * devicePixelRatio / scale}));
+}
+
+ontouchmove = function(e)
+{
+    ws.send(JSON.stringify({ type: 'input', data: (e.touches[0].clientX - canvas.offsetLeft) * devicePixelRatio / scale}));
+}
+
+// ontouchend = function(e)
+// {
+//     var doc = window.document;
+//     var docEl = doc.documentElement;
+//     var requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
+    
+//     if(requestFullScreen && !doc.fullscreenElement && !doc.mozFullScreenElement && !doc.webkitFullscreenElement && !doc.msFullscreenElement)
+//     {
+//         requestFullScreen.call(docEl);
+//         screen.orientation.lock("portrait");
+//     }
+// }
+
+// ontouchcancel = function(e)
+// {
+
+// }
+
 function update()
 {
-    // if (Input.touchCount == 1)
-    // {
-    //     if (ball.velocity.x == 0 && ball.velocity.y == 0)
-    //     {
-    //         ball.velocity = new Vector2(Math.random() * 200, Math.random() * 200);
-    //     }
-
-    //     var touch = Input.getTouch(0);
-    //     paddle0.position.x = touch.position.x / scale - paddle0.size.x / 2;
-    // }
-
-    // paddle1.position.x = Vector2.lerp(paddle1.position, new Vector2(ball.position.x + ball.radius / 2 - paddle1.size.x / 2, 0), 0.1).x;
-}
-
-function lateUpdate()
-{
-    /*if (Input.touchCount == 1)
+    if (ballTrace.length >= 10)
     {
-        var touch = Input.getTouch(0),
-            p1 = Vector2.screenToWorld(touch.prevPosition),
-            p2 = Vector2.screenToWorld(touch.position),
-            delta = Vector2.subtract(p2, p1),
-            vel = Vector2.multiply(delta, 60),
-            finger = Ray.raycast(p1, p2);
-        
-        if (finger && finger.polygon)
+        ballTrace.splice(0, 1);
+    }
+
+    if (players)
+    {
+        for (var i = 0; i < players.length; i++)
         {
-            finger.polygon.addForce(finger.point, Vector2.multiply(vel, finger.polygon.mass / 4), finger.normal);
+            if (players[i].newpos)
+            {
+                players[i].position = Vector2.lerp(players[i].position, players[i].newpos, 0.7);
+            }
         }
     }
-    
-    result = null;
-    
-    if (gameTime > nextTimeToShoot && Input.touchCount > 1)
-    {
-        nextTimeToShoot = gameTime + 1 / gun.fireRate;
-        result = Ray.raycast(gun.getMuzzle(), Vector2.add(gun.getMuzzle(), Vector2.multiply(gun.getDirection(), -10000)));
-        
-        clouds.push({
-            position: Vector2.add(gun.getMuzzle(), Vector2.multiply(gun.getDirection(), -10)),
-            rotation: Math.random() * 2 * Math.PI,
-            scale: 0.01,
-            scaleFactor: 1.02,
-            opacity: 0.2,
-            velocity: Vector2.add(Vector2.multiply(gun.getDirection(), -40 - Math.random() * 40), new Vector2(0, Math.random() * 60))
-        });
-        
-        if (result.polygon)
-        {
-            var nAngle = Vector2.angle(result.normal);
-            
-            clouds.push({
-                position: new Vector2(result.point.x - 10 + Math.random() * 20, result.point.y - 10 + Math.random() * 20),
-                rotation: Math.random() * 2 * Math.PI,
-                scale: 0.01,
-                scaleFactor: 1.01,
-                opacity: 0.3,
-                velocity: Vector2.angleLength(nAngle - 0.2 + Math.random() * 0.4, Math.random() * 50)
-            });
-            
-            result.polygon.addForce(result.point, Vector2.multiply(Vector2.subtract(result.point, result.origin).normalized, 9 * 91000), result.normal);
-        }
-    }*/
-}
 
-function physics()
-{
-    
+    if (ball)
+    {
+        if (ball.newpos)
+        {
+            ball.position = Vector2.lerp(ball.position, ball.newpos, 0.7);
+            //ball.position.x = ball.newpos.x + ball.velocity.x * deltaTime;
+            //ball.position.y = ball.newpos.y + ball.velocity.y * deltaTime;
+        }
+
+        ballTrace.push(ball.position);
+    }
 }
 
 function draw()
@@ -211,13 +203,40 @@ function draw()
     
     ctx.save();
 
+    if (roomIsFull)
+    {
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("The room is full", 128 * scale, 256 * scale);
+        ctx.restore();
+        return;
+    }
+
     if (uuid == 'player1')
     {
-        ctx.scale(scale, -scale);
-        ctx.translate(0, -512);
+        if (players)
+        {
+            ctx.textBaseline = "top";
+            ctx.fillText(players[0].score, 10, 260 * scale);
+            ctx.textBaseline = "alphabetic";
+            ctx.textAlign = "right";
+            ctx.fillText(players[1].score, 252 * scale, 249 * scale);
+        }
+        ctx.scale(-scale, -scale);
+        ctx.translate(-256, -512);
     }
     else
     {
+        if (players)
+        {
+            ctx.textBaseline = "top"
+            ctx.fillText(players[1].score, 10, 260 * scale);
+
+            ctx.textBaseline = "alphabetic";
+            ctx.textAlign = "right";
+            ctx.fillText(players[0].score, 252 * scale, 249 * scale);
+        }
+
         ctx.scale(scale, scale);
     }
     
@@ -228,17 +247,53 @@ function draw()
     ctx.setLineDash([8.25, 8.25]);
     ctx.stroke();
 
+    ctx.save();
+
     if (players)
     {
         for (var i = 0; i < players.length; i++)
         {
-            ctx.fillRect(players[i].position.x, players[i].position.y, players[i].size.x, players[i].size.y);
+            ctx.fillStyle = "rgb(236, 240, 241)";
+
+            if (!players[i].online)
+            {
+                ctx.fillStyle = 'rgb(30, 30, 30)';
+            }
+
+            ctx.fillRect(players[i].position.x - players[i].size.x / 2, players[i].position.y - players[i].size.y / 2, players[i].size.x, players[i].size.y);
         }
+    }
+
+    ctx.restore();
+
+    if (ballTrace.length > 0)
+    {
+        var start = ballTrace[0],
+            end = ballTrace[ballTrace.length - 1],
+            gradient = ctx.createLinearGradient(start.x, start.y, end.x, end.y);
+
+        gradient.addColorStop(0, "rgba(236, 240, 241, 0)");
+        gradient.addColorStop(1, "rgba(236, 240, 241, 1)");
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        
+        for (var i = 1; i < ballTrace.length; i++)
+        {
+            ctx.lineTo(ballTrace[i].x, ballTrace[i].y);
+        }
+
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = gradient;
+        ctx.setLineDash([]);
+        ctx.lineCap = "round";
+        ctx.stroke();
     }
 
     if (ball)
     {
-        ctx.fillRect(ball.position.x, ball.position.y, ball.radius, ball.radius);
+        ctx.beginPath();
+        ctx.arc(ball.position.x, ball.position.y, ball.radius, 0, 2 * Math.PI);
+        ctx.fill();
     }
 
     ctx.restore();
